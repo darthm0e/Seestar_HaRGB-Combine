@@ -1,0 +1,7 @@
+.claude/
+__pycache__/
+*.pyc
+_ha_combine_work/
+*.fit
+*.fits
+
