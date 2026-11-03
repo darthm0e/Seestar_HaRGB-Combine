@@ -1,71 +1,87 @@
 """
-Seestar HaRGB-Combine  --  Seestar S30 Pro  (Siril >= 1.4 Python-Script)
-=========================================================================
+Seestar HaRGB-Combine  --  Seestar S30 Pro  (Siril >= 1.4 Python script)
+========================================================================
 
-Kombiniert IRCUT-Stacks (normales OSC-RGB) mit LP-Stacks (Dual-Band-Filter
-Ha/OIII) zu einem HaRGB- bzw. HaOIII-RGB-Bild.
+Combines IRCUT stacks (regular OSC RGB) with LP stacks (dual-band Ha/OIII
+filter) into an HaRGB or HaOIII-RGB image.
 
-Ablauf
-------
- 1. Stacks laden - beliebig viele pro Filter (z.B. mehrere Naechte), wahlweise
-    automatisch per Ordner-Scan (Filter wird am Dateinamen erkannt: _IRCUT_/_LP_).
- 2. Alle Stacks per Sternregistrierung (Siril `register`) auf den IRCUT-Stack
-    mit den meisten Frames ausrichten (mit Rueckfall-Strategien).
- 3. Mehrere Stacks desselben Filters normieren und rauschgewichtet mitteln.
- 4. Optional: auf den gemeinsamen Bildbereich zuschneiden, Gradienten entfernen.
- 5. Ha = Rot des LP-Stacks, OIII = Mittel aus Gruen+Blau.
- 6. Sternschaerfe (FWHM) von RGB und Ha/OIII angleichen, Kontinuum-Abgleich
-    ueber die Sterne, Ha-/OIII-Linienemission (Ueberschuss) bestimmen.
- 7. Ueberschuss glaetten, Rauschschwelle anwenden, Sterne ausmaskieren
-    (Bereich unter den Sternen wird aus der Umgebung aufgefuellt).
- 8. Ha in Rot, OIII in Gruen/Blau einrechnen, optional Ha-Luminanz-Boost.
- 9. Ergebnis als 32-bit FITS speichern (linear) und in Siril laden.
+Languages: English (default) and German. The language follows the
+system/Siril language and can be changed in the dialog or with -lang en|de.
 
-Modi
-----
-  excess (Standard)  R' = R + k_Ha * E_Ha      G',B' += k_OIII * E_OIII
-          E = geglaettete, rauschbereinigte Linienemission ueber dem Kontinuum.
-          Sterne und Hintergrund bleiben unveraendert.
-  blend   R' = (1-k_Ha) * R + k_Ha * Ha_lin    (G,B analog mit OIII)
-          Mischt das (rauschaermere) Schmalband ein. k = "auto" waehlt die
-          rauschoptimale Gewichtung.
+Pipeline
+--------
+ 1. Load stacks - any number per filter (e.g. several nights), optionally
+    found automatically by folder scan (filter detected from the file name:
+    _IRCUT_ / _LP_, or the FILTER header keyword).
+ 2. Register all stacks onto the IRCUT stack with the most frames using star
+    matching (Siril `register`), with fallback strategies.
+ 3. Normalize multiple stacks of the same filter and average them, weighted
+    by noise.
+ 4. Optional: crop to the common area, remove gradients.
+ 5. Ha = red of the LP stack, OIII = mean of green + blue.
+ 6. Match star sharpness (FWHM) of RGB and Ha/OIII, match the continuum on the
+    stars, determine the Ha/OIII line emission (excess).
+ 7. Smooth the excess, apply a noise threshold, mask the stars (the area under
+    the stars is filled in from the surroundings).
+ 8. Add Ha to red, OIII to green/blue, optional Ha luminance boost.
+ 9. Save the result as 32-bit FITS (linear) and load it in Siril.
 
-  Ha-Luminanz (k_Lum): Helligkeit wird zusaetzlich Richtung Ha gezogen
-  (Details/SNR des Ha), Farben bleiben erhalten, Sterne geschuetzt.
+Modes
+-----
+  excess (default)  R' = R + k_Ha * E_Ha      G',B' += k_OIII * E_OIII
+          E = smoothed, noise-cleaned line emission above the continuum.
+          Stars and background stay unchanged.
+  blend   R' = (1-k_Ha) * R + k_Ha * Ha_lin    (G,B likewise with OIII)
+          Blends in the (lower-noise) narrowband. k = "auto" picks the
+          noise-optimal weight.
 
-Aufruf
-------
-  * Siril: Skripte-Menue -> Seestar_HaRGB-Combine  (Dialog mit Vorschau)
-  * Siril-Konsole / .ssf:
-      pyscript "C:/pfad/zu/Seestar_HaRGB-Combine.py" -dir "C:/daten/NGC7000"
-      pyscript "C:/pfad/zu/Seestar_HaRGB-Combine.py" -ircut "a.fit" -lp "b.fit" "c.fit"
-    Optionen: -out DATEI  -mode excess|blend  -k 0.5|auto  -koiii 0  -klum 0
-              -noise 2  -smooth 2  -nopsf  -nostarprot  -bge  -crop  -keep
+  Ha luminance (k_Lum): brightness is additionally pulled towards Ha
+  (detail/SNR of the Ha), colours are kept, stars are protected.
 
-Ausgabe (neben der Ausgabedatei):
-  <name>.fit            Ergebnis (linear)
-  <name>_Ha.fit         ausgerichteter Ha-Kanal, linear an R angepasst
-  <name>_OIII.fit       ausgerichteter OIII-Kanal, linear an (G+B)/2 angepasst
-  <name>_HaExcess.fit   reine Ha-Linienemission (kontinuumsbereinigt)
+Usage
+-----
+  * Siril: Scripts menu -> Seestar_HaRGB-Combine  (dialog with preview)
+  * Siril console / .ssf:
+      pyscript "C:/path/to/Seestar_HaRGB-Combine.py" -dir "C:/data/NGC7000"
+      pyscript "C:/path/to/Seestar_HaRGB-Combine.py" -ircut "a.fit" -lp "b.fit" "c.fit"
+    Options: -out FILE  -mode excess|blend  -k 0.5|auto  -koiii 0  -klum 0
+             -noise 2  -smooth 2  -nopsf  -nostarprot  -bge  -crop  -keep
+             -lang en|de
+
+Output (next to the output file):
+  <name>.fit            result (linear)
+  <name>_Ha.fit         registered Ha channel, linearly fitted to R
+  <name>_OIII.fit       registered OIII channel, linearly fitted to (G+B)/2
+  <name>_HaExcess.fit   pure Ha line emission (continuum-subtracted)
 """
 
 import os
 import re
 import sys
 import glob
+import json
+import locale
 import shutil
 import argparse
 import threading
 import traceback
 
-import sirilpy as s
+# Capture the system language BEFORE importing sirilpy - sirilpy overwrites
+# LANG/LC_ALL with en_US.UTF-8 on import.
+_SYS_LANG_HINTS = [os.environ.get(k) for k in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG")]
+try:
+    _SYS_LANG_HINTS.append(locale.getlocale()[0])
+except Exception:
+    pass
+
+import sirilpy as s  # noqa: E402
 
 s.ensure_installed("numpy", "astropy")
 
 import numpy as np                       # noqa: E402
 from astropy.io import fits              # noqa: E402
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 SEQ = "hapair"
 WORKDIR_NAME = "_ha_combine_work"
 FITS_EXT = (".fit", ".fits", ".fts")
@@ -76,13 +92,212 @@ DEFAULTS = dict(mode="excess", k_ha=0.5, k_oiii=0.0, k_lum=0.0, noise_t=2.0,
                 crop=False, keep=False)
 
 
+# ===========================================================================
+# Translations
+# ===========================================================================
+LANGS = {"en": "English", "de": "Deutsch"}
+LANG = "en"
+
+TEXTS = {
+    # --- log / errors ---
+    "frames": ("{kind}: {name}  ({n} frames)", "{kind}: {name}  ({n} Frames)"),
+    "loading_ref": ("Loading reference ...", "Lade Referenz ..."),
+    "registering": ("Registering {name} ...", "Registriere {name} ..."),
+    "reg_try_failed": ("  Registration {args} failed: {err}",
+                       "  Registrierung {args} fehlgeschlagen: {err}"),
+    "reg_ok_with": ("  Registration succeeded with {args}",
+                    "  Registrierung gelungen mit {args}"),
+    "reg_failed": ("Registration failed for {name} (too few common stars?)",
+                   "Registrierung fehlgeschlagen für {name} (zu wenige gemeinsame Sterne?)"),
+    "need_both": ("At least one IRCUT and one LP stack required.",
+                  "Mindestens ein IRCUT- und ein LP-Stack nötig."),
+    "n_averaged": ("{n} {kind} stacks averaged (noise-weighted)",
+                   "{n} {kind}-Stacks rauschgewichtet gemittelt"),
+    "overlap": ("Overlap IRCUT/LP: {p:.1f} %", "Überlappung IRCUT/LP: {p:.1f} %"),
+    "cropped": ("Cropped to {w}x{h} px (x {x0}..{x1}, y {y0}..{y1})",
+                "Zugeschnitten auf {w}x{h} px (x {x0}..{x1}, y {y0}..{y1})"),
+    "bge_prog": ("Background extraction ...", "Gradientenentfernung ..."),
+    "bge_log": ("Background extraction (subsky degree 1) ...",
+                "Gradientenentfernung (subsky Grad 1) ..."),
+    "analyze_stars": ("Analysing stars ...", "Analysiere Sterne ..."),
+    "fwhm": ("FWHM ({n} stars): R {r:.2f}  Ha {ha:.2f}  G/B {gb:.2f}  OIII {o:.2f} px",
+             "FWHM ({n} Sterne): R {r:.2f}  Ha {ha:.2f}  G/B {gb:.2f}  OIII {o:.2f} px"),
+    "fwhm_none": ("Too few stars for FWHM measurement - no PSF matching.",
+                  "Zu wenige Sterne für FWHM-Messung - kein PSF-Angleich."),
+    "starmask": ("Star mask: {p:.1f} % of the image area",
+                 "Sternmaske: {p:.1f} % der Bildfläche"),
+    "psf": ("PSF matching {label}: {which} blurred (sigma {s:.2f} px)",
+            "PSF-Angleich {label}: {which} weichgezeichnet (sigma {s:.2f} px)"),
+    "cont_fallback": ("{label}: too few stars for continuum matching - using linear fit",
+                      "{label}: zu wenige Sterne für Kontinuum-Abgleich - lineare Anpassung"),
+    "cont": ("{label}: continuum matching ({n} star pixels) scale={a:.4f} off={b:+.5f}",
+             "{label}: Kontinuum-Abgleich ({n} Sternpixel) scale={a:.4f} off={b:+.5f}"),
+    "line_ha": ("Determining Ha line emission ...", "Bestimme Ha-Linienemission ..."),
+    "line_o": ("Determining OIII line emission ...", "Bestimme OIII-Linienemission ..."),
+    "leak": ("Ha crosstalk in OIII corrected: kappa={k:.3f}",
+             "Ha-Übersprechen im OIII korrigiert: kappa={k:.3f}"),
+    "noise": ("Noise: R {r:.2e}  Ha(to R) {h:.2e}  G {g:.2e}  OIII(to G) {o:.2e}",
+              "Rauschen: R {r:.2e}  Ha(an R) {h:.2e}  G {g:.2e}  OIII(an G) {o:.2e}"),
+    "autok": ("Auto-k for 'blend': Ha {h:.2f}  OIII {o:.2f}",
+              "Auto-k für 'blend': Ha {h:.2f}  OIII {o:.2f}"),
+    "prep_done": ("Preparation complete", "Vorbereitung abgeschlossen"),
+    "computing": ("Computing result ...", "Berechne Ergebnis ..."),
+    "saving": ("Saving ...", "Speichere ..."),
+    "saved": ("Saved: {p}", "Gespeichert: {p}"),
+    "done": ("Done. The result is linear - next e.g. SPCC and stretch.",
+             "Fertig. Das Ergebnis ist linear - jetzt z.B. SPCC und Stretch."),
+    "mode_line": ("Mode {mode}: k_Ha={kh} k_OIII={ko} k_Lum={kl}",
+                  "Modus {mode}: k_Ha={kh} k_OIII={ko} k_Lum={kl}"),
+    "no_stacks": ("No matching IRCUT and LP stacks found.",
+                  "Keine passenden IRCUT- und LP-Stacks gefunden."),
+    "cli_need": ("In CLI mode please specify -dir or -ircut and -lp.",
+                 "Im CLI-Modus bitte -dir oder -ircut und -lp angeben."),
+    "error": ("Error: {e}", "Fehler: {e}"),
+    "no_conn": ("No connection to Siril: {e}", "Keine Verbindung zu Siril: {e}"),
+    "too_few_px": ("Too few common pixels for the linear fit - do the stacks match?",
+                   "Zu wenige gemeinsame Pixel für die lineare Anpassung - "
+                   "passen die Stacks zusammen?"),
+    "no_data": ("No image data found in: {p}", "Keine Bilddaten gefunden in: {p}"),
+    "bad_shape": ("Unexpected image shape {s} in: {p}", "Unerwartete Bildform {s} in: {p}"),
+    "bad_mode": ("Unknown mode: {m}", "Unbekannter Modus: {m}"),
+    # --- GUI ---
+    "ircut_stacks": ("IRCUT stacks:", "IRCUT-Stacks:"),
+    "lp_stacks": ("LP stacks:", "LP-Stacks:"),
+    "scan": ("Scan folder ...", "Ordner scannen ..."),
+    "scan_title": ("Folder with Seestar stacks", "Ordner mit Seestar-Stacks"),
+    "scan_found": ("Found {i} IRCUT and {l} LP stacks.",
+                   "{i} IRCUT- und {l} LP-Stacks gefunden."),
+    "scan_unknown": (" {n} file(s) could not be assigned.",
+                     " {n} Datei(en) nicht zuordenbar."),
+    "scan_hint": (" Remove unsuitable entries if needed (do not mix per-session "
+                  "and combined stacks).",
+                  " Ggf. unpassende Einträge entfernen (Einzel- und Gesamt-Stacks "
+                  "nicht mischen)."),
+    "output": ("Output:", "Ausgabe:"),
+    "out_title": ("Output file", "Ausgabedatei"),
+    "all_files": ("All files", "Alle Dateien"),
+    "grp_prep": ("Preparation (change = recompute)", "Vorbereitung (Änderung = neu berechnen)"),
+    "opt_psf": ("Match star sharpness (PSF)", "Sternschärfe angleichen (PSF)"),
+    "opt_bge": ("Background extraction (subsky degree 1)",
+                "Gradientenentfernung (subsky Grad 1)"),
+    "opt_crop": ("Crop to common area", "Auf gemeinsamen Bildbereich zuschneiden"),
+    "grp_comb": ("Combination (live preview)", "Kombination (Vorschau live)"),
+    "mode": ("Mode:", "Modus:"),
+    "sl_kha": ("Ha strength", "Ha-Stärke"),
+    "sl_ko": ("OIII strength", "OIII-Stärke"),
+    "sl_kl": ("Ha luminance", "Ha-Luminanz"),
+    "sl_noise": ("Noise threshold (sigma)", "Rauschschwelle (sigma)"),
+    "sl_smooth": ("Smoothing (px)", "Glättung (px)"),
+    "star_prot": ("Protect stars", "Sterne schützen"),
+    "autok_btn": ("Auto-k (blend)", "Auto-k (blend)"),
+    "autok_first": ("Run 'Preview' first.", "Erst 'Vorschau' ausführen."),
+    "mode_excess": ("Add line emission above the continuum (recommended)",
+                    "Linienemission über dem Kontinuum addieren (empfohlen)"),
+    "mode_blend": ("Blend in narrowband (k 0..1, Auto-k = noise-optimal)",
+                   "Schmalband einmischen (k 0..1, Auto-k = rauschoptimal)"),
+    "keep": ("Keep working folder (debug)", "Arbeitsordner behalten (Debug)"),
+    "preview": ("Preview", "Vorschau"),
+    "save": ("Save", "Speichern"),
+    "close": ("Close", "Schließen"),
+    "before": ("Before (IRCUT only)", "Vorher (nur IRCUT)"),
+    "click_hint": ("Click into the overview to select\nthe 1:1 crop.",
+                   "Klick in die Übersicht wählt\nden 1:1-Ausschnitt."),
+    "language": ("Language:", "Sprache:"),
+    "st_start": ("Select stacks or scan a folder.", "Stacks wählen oder Ordner scannen."),
+    "st_needprep": ("Preparation required (Preview or Save).",
+                    "Vorbereitung nötig (Vorschau oder Speichern)."),
+    "st_preparing": ("Preparing (registration, analysis) ...",
+                     "Vorbereitung läuft (Registrierung, Analyse) ..."),
+    "st_prepared": ("Prepared. Move the sliders - the preview updates.",
+                    "Vorbereitet. Regler ändern - die Vorschau aktualisiert sich."),
+    "st_saved": ("Saved: {p} (loaded in Siril)", "Gespeichert: {p} (in Siril geladen)"),
+    "err_title": ("Error", "Fehler"),
+}
+
+
+def tr(key, **kw):
+    en, de = TEXTS[key]
+    txt = de if LANG == "de" else en
+    return txt.format(**kw) if kw else txt
+
+
+def settings_path():
+    base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "Seestar_HaRGB-Combine.json")
+
+
+def load_settings():
+    try:
+        with open(settings_path(), encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def save_settings(**kw):
+    d = load_settings()
+    d.update(kw)
+    try:
+        os.makedirs(os.path.dirname(settings_path()), exist_ok=True)
+        with open(settings_path(), "w", encoding="utf-8") as fh:
+            json.dump(d, fh)
+    except Exception:
+        pass
+
+
+def _lang_code(value):
+    return "de" if value.lower().startswith(("de", "german")) else "en"
+
+
+def siril_ui_lang():
+    """Language set in Siril's preferences ('lang=' in config.*.ini), or None."""
+    dirs = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "siril"),
+            os.path.join(os.path.expanduser("~"), ".config", "siril"),
+            os.path.join(os.path.expanduser("~"), "Library", "Application Support",
+                         "org.siril.Siril", "siril")]
+    cfgs = [p for d in dirs if d for p in glob.glob(os.path.join(d, "config*.ini"))]
+    for cfg in sorted(cfgs, key=os.path.getmtime, reverse=True):
+        try:
+            with open(cfg, encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    if line.startswith("lang="):
+                        val = line.split("=", 1)[1].strip()
+                        return val or None
+        except Exception:
+            pass
+    return None
+
+
+def detect_lang(cli=None):
+    """-lang argument > saved choice > Siril language > OS language > English."""
+    if cli in LANGS:
+        return cli
+    saved = load_settings().get("lang")
+    if saved in LANGS:
+        return saved
+    sl = siril_ui_lang()
+    if sl:
+        return _lang_code(sl)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            lid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+            return "de" if (lid & 0x3FF) == 0x07 else "en"
+        except Exception:
+            pass
+    for c in _SYS_LANG_HINTS:
+        if c:
+            return _lang_code(c)
+    return "en"
+
+
 class Params:
     def __init__(self, **kw):
         for k, v in DEFAULTS.items():
             setattr(self, k, kw.get(k, v))
 
     def prep_key(self):
-        """Optionen, die eine neue Vorbereitung erfordern."""
+        """Options that require a new preparation."""
         return (self.psf_match, self.bge, self.crop)
 
 
@@ -90,11 +305,11 @@ class Params:
 # FITS I/O
 # ===========================================================================
 def read_fits(path):
-    """Liest ein FITS-Bild als float32 (C, H, W) in [0..1] + Header."""
+    """Reads a FITS image as float32 (C, H, W) in [0..1] plus header."""
     with fits.open(path, memmap=False) as hdul:
         hdu = next((h for h in hdul if h.data is not None and h.data.ndim >= 2), None)
         if hdu is None:
-            raise ValueError(f"Keine Bilddaten gefunden in: {path}")
+            raise ValueError(tr("no_data", p=path))
         data = hdu.data
         header = hdu.header.copy()
 
@@ -103,7 +318,7 @@ def read_fits(path):
     elif data.ndim == 3 and data.shape[0] not in (1, 3) and data.shape[-1] in (1, 3):
         data = np.moveaxis(data, -1, 0)
     if data.ndim != 3 or data.shape[0] not in (1, 3):
-        raise ValueError(f"Unerwartete Bildform {data.shape} in: {path}")
+        raise ValueError(tr("bad_shape", s=data.shape, p=path))
 
     if np.issubdtype(data.dtype, np.integer):
         data = data.astype(np.float32) / 65535.0
@@ -139,7 +354,7 @@ def write_fits(path, data, header=None, history=None):
                 hdr.append(card)
             except Exception:
                 pass
-    for line in history or []:
+    for line in history or []:          # FITS headers are ASCII -> always English
         hdr.add_history(line)
     fits.PrimaryHDU(data=data, header=hdr).writeto(path, overwrite=True)
 
@@ -156,7 +371,7 @@ def link_or_copy(src, dst):
 
 
 # ===========================================================================
-# Stack-Erkennung (Punkt 6)
+# Stack detection
 # ===========================================================================
 RE_IRCUT = re.compile(r"(?<![a-z0-9])(ircut|ir-cut|uvir|uv-ir|uvircut)(?![a-z0-9])", re.I)
 RE_LP = re.compile(r"(?<![a-z0-9])(lp|lpf|dual|dualband|duoband|l-enhance|lenhance)"
@@ -164,7 +379,7 @@ RE_LP = re.compile(r"(?<![a-z0-9])(lp|lpf|dual|dualband|duoband|l-enhance|lenhan
 
 
 def classify_stack(path):
-    """'ircut', 'lp' oder None - zuerst am Dateinamen, sonst am FILTER-Header."""
+    """'ircut', 'lp' or None - from the file name first, else the FILTER header."""
     name = os.path.basename(path)
     if RE_LP.search(name):
         return "lp"
@@ -181,7 +396,7 @@ def classify_stack(path):
 
 
 def frame_count(path):
-    """Anzahl gestackter Frames aus Dateiname oder Header (0 = unbekannt)."""
+    """Number of stacked frames from file name or header (0 = unknown)."""
     name = os.path.basename(path)
     m = re.search(r"Stacked_(\d+)_", name, re.I) or re.search(r"_(\d+)f(?=[_.])", name)
     if m:
@@ -198,7 +413,7 @@ def frame_count(path):
 
 
 def detect_stacks(folder):
-    """Sucht IRCUT- und LP-Stacks in einem Ordner (nicht rekursiv)."""
+    """Finds IRCUT and LP stacks in a folder (not recursive)."""
     ircut, lp, unknown = [], [], []
     for p in sorted(glob.glob(os.path.join(folder, "*"))):
         n = os.path.basename(p).lower()
@@ -211,10 +426,10 @@ def detect_stacks(folder):
 
 
 # ===========================================================================
-# Bildverarbeitung
+# Image processing
 # ===========================================================================
 def box_mean(a, r):
-    """Box-Mittelwert (Radius r) ueber Integralbild, Raender gespiegelt (edge)."""
+    """Box mean (radius r) via integral image, edge padding."""
     if r <= 0:
         return a.astype(np.float32, copy=True)
     k = 2 * r + 1
@@ -227,7 +442,7 @@ def box_mean(a, r):
 
 
 def gauss_blur(a, sigma):
-    """Gauss-Naeherung durch 3 Box-Durchlaeufe, Varianz exakt interpoliert."""
+    """Gaussian approximation by 3 box passes, variance interpolated exactly."""
     if sigma < 0.25:
         return a.astype(np.float32, copy=True)
 
@@ -236,7 +451,7 @@ def gauss_blur(a, sigma):
             img = box_mean(img, r)
         return img
 
-    v = sigma * sigma                      # 3 Boxen mit Radius r: Varianz r(r+1)
+    v = sigma * sigma                      # 3 boxes of radius r: variance r(r+1)
     r0 = int(np.floor((-1 + np.sqrt(1 + 4 * v)) / 2))
     r1 = r0 + 1
     v0, v1 = r0 * (r0 + 1), r1 * (r1 + 1)
@@ -276,7 +491,7 @@ def center_slice(shape, size=2048):
 
 
 def noise_sigma(img, valid):
-    """Pixelrauschen (MAD eines Hochpasses) auf einem zentralen Ausschnitt."""
+    """Pixel noise (MAD of a high-pass) on a central crop."""
     sl = center_slice(img.shape)
     c = img[sl]
     hp = c - box_mean(c, 2)
@@ -290,12 +505,11 @@ def smoothstep(a, b, x):
 
 
 def linear_fit(src, ref, valid, low=1e-6, high=0.92, max_n=2_000_000):
-    """Least-Squares  src*a + b ~ ref  (wie Siril linear_match)."""
+    """Least squares  src*a + b ~ ref  (like Siril linear_match)."""
     m = valid & (ref > low) & (ref < high) & (src > low) & (src < high)
     idx = np.flatnonzero(m)
     if idx.size < 1000:
-        raise RuntimeError("Zu wenige gemeinsame Pixel fuer die lineare Anpassung "
-                           "- passen die Stacks zusammen?")
+        raise RuntimeError(tr("too_few_px"))
     if idx.size > max_n:
         idx = idx[:: idx.size // max_n + 1]
     x = src.ravel()[idx].astype(np.float64)
@@ -311,7 +525,7 @@ def linear_fit(src, ref, valid, low=1e-6, high=0.92, max_n=2_000_000):
 
 
 def common_crop(valid, min_frac=0.999):
-    """Groesstes Rechteck, dessen Raender vollstaendig gueltig sind (Punkt 8)."""
+    """Largest rectangle whose borders are fully valid."""
     y0, y1, x0, x1 = 0, valid.shape[0], 0, valid.shape[1]
     while y1 - y0 > 16 and x1 - x0 > 16:
         sub = valid[y0:y1, x0:x1]
@@ -331,7 +545,7 @@ def common_crop(valid, min_frac=0.999):
 
 
 def measure_fwhm(chans, det, valid, sat=0.85, max_stars=300):
-    """Median-FWHM (Pixel) je Kanal an denselben Sternen (Punkt 2)."""
+    """Median FWHM (pixels) per channel, measured on the same stars."""
     sl = center_slice(det.shape, 3000)
     d, v = det[sl], valid[sl]
     hp = box_mean(d, 1) - box_mean(d, 10)
@@ -378,7 +592,7 @@ def measure_fwhm(chans, det, valid, sat=0.85, max_stars=300):
 
 
 def psf_match(a, b, fa, fb):
-    """Weichzeichnet das schaerfere Bild auf die FWHM des anderen."""
+    """Blurs the sharper image to the FWHM of the other one."""
     sa, sb = fa / 2.3548, fb / 2.3548
     if abs(sa - sb) < 0.15:
         return a, b, 0.0, 0.0
@@ -390,7 +604,7 @@ def psf_match(a, b, fa, fb):
 
 
 def star_mask(r, valid, fwhm):
-    """Weiche Sternmaske 0..1 aus dem RGB-Rotkanal."""
+    """Soft star mask 0..1 from the RGB red channel."""
     rs = max(1, int(round(fwhm / 4)))
     rb = max(6, int(round(2.5 * fwhm)))
     hp = box_mean(r, rs) - box_mean(r, rb)
@@ -404,7 +618,7 @@ def star_mask(r, valid, fwhm):
 
 
 def continuum_scale(nb, bb, valid, fwhm, sat=0.9):
-    """Skalierung Schmalband -> Breitband ueber die Sterne (Kontinuum)."""
+    """Scale narrowband -> broadband using the stars (continuum)."""
     rs = max(1, int(round(fwhm / 4)))
     rb = max(6, int(round(2.5 * fwhm)))
     hp_b = box_mean(bb, rs) - box_mean(bb, rb)
@@ -426,7 +640,7 @@ def continuum_scale(nb, bb, valid, fwhm, sat=0.9):
 
 
 def excess_map(diff, star, valid, rs, sigma, t, rin):
-    """Linienemission: glaetten, Rauschschwelle, Sterne auffuellen (Punkt 1+2)."""
+    """Line emission: smooth, noise threshold, fill in star areas."""
     e = box_mean(diff, rs) if rs > 0 else diff.astype(np.float32, copy=True)
     if t > 0 and sigma > 0:
         w = smoothstep(0.5 * t, 1.5 * t, e / sigma)
@@ -447,7 +661,7 @@ def excess_map(diff, star, valid, rs, sigma, t, rin):
 
 
 def stretch_params(rgb, valid):
-    """Unlinked Autostretch-Parameter (wie Siril) aus dem IRCUT-Bild."""
+    """Unlinked autostretch parameters (like Siril) from the IRCUT image."""
     prm = []
     for c in range(rgb.shape[0]):
         x = rgb[c][valid][::5] if valid.any() else rgb[c].ravel()
@@ -484,7 +698,7 @@ def bin_image(a, f, mode="mean"):
 
 
 class GroupStack:
-    """Mehrere Stacks eines Filters: normieren + rauschgewichtet mitteln (Punkt 9)."""
+    """Several stacks of one filter: normalize + noise-weighted mean."""
 
     def __init__(self):
         self.ref = self.refv = self.acc = self.wsum = None
@@ -528,15 +742,14 @@ def q(path):
 
 
 # ===========================================================================
-# Vorbereitete Daten
+# Prepared data
 # ===========================================================================
 class Prepared:
-    """Ausgerichtete Daten + alle Analyse-Ergebnisse; Basis fuer Vorschau/Export."""
+    """Registered data + all analysis results; basis for preview/export."""
 
     def __init__(self):
         self.arrays = {}
         self.coef = {}
-        self.info = []
         self._sigma = {}
         self._bins = {}
         self.fwhm = None
@@ -544,13 +757,14 @@ class Prepared:
         self.auto_k = {}
         self.hdr = None
         self.inputs = ([], [])
+        self.prep_key = None
 
     @property
     def shape(self):
         return self.arrays["ha"].shape
 
     def sigma(self, key, r):
-        """Rauschen des (geglaetteten) Differenzbilds - immer in voller Aufloesung."""
+        """Noise of the (smoothed) difference image - always at full resolution."""
         if (key, r) not in self._sigma:
             diff = self.arrays.get(key)
             if diff is None:
@@ -565,9 +779,8 @@ class Prepared:
 
     def binned(self, f):
         if f not in self._bins:
-            A = self.arrays
             B = {}
-            for k, v in A.items():
+            for k, v in self.arrays.items():
                 if v is None:
                     B[k] = None
                 elif k == "valid":
@@ -576,8 +789,8 @@ class Prepared:
                     B[k] = bin_image(v, f, "max")
                 else:
                     B[k] = bin_image(v, f)
+            B["_stretch"] = stretch_params(B["rgb"], B["valid"])
             self._bins = {f: B}
-            self._bins[f]["_stretch"] = stretch_params(B["rgb"], B["valid"])
         return self._bins[f]
 
     def region(self, y0, y1, x0, x1):
@@ -586,8 +799,7 @@ class Prepared:
 
 
 def render(P, A, prm, f=1, want_excess=False):
-    """Berechnet das kombinierte Bild fuer die Arrays A (voll, Ausschnitt oder
-    gebinnt mit Faktor f)."""
+    """Computes the combined image for arrays A (full, crop, or binned by f)."""
     rgb, valid = A["rgb"], A["valid"]
     out = rgb.copy()
     star = A["star"] if prm.star_protect else None
@@ -618,11 +830,11 @@ def render(P, A, prm, f=1, want_excess=False):
             e_ha = excess_map(A["diff_ha"], star, valid, rs,
                               P.sigma("diff_ha", prm.smooth), prm.noise_t, rin)
     else:
-        raise ValueError(f"Unbekannter Modus: {prm.mode}")
+        raise ValueError(tr("bad_mode", m=prm.mode))
 
-    if prm.k_lum > 0:                                    # Punkt 4
-        # Nur das Signal UEBER dem Himmelshintergrund skalieren - sonst
-        # wuerde der Hintergrund-Sockel mitskaliert und die Farben verblassen.
+    if prm.k_lum > 0:
+        # Scale only the signal ABOVE the sky background - scaling the
+        # background pedestal as well would wash out the colours.
         a, b = P.coef["ha_l"]
         ped = np.asarray(P.coef["ped"], dtype=np.float32)[:, None, None]
         delta = prm.k_lum * (a * A["ha"] + b - rgb.mean(axis=0))
@@ -639,13 +851,13 @@ def render(P, A, prm, f=1, want_excess=False):
 
 
 # ===========================================================================
-# Ablauf
+# Processing
 # ===========================================================================
 class Combiner:
     def __init__(self, siril):
         self.siril = siril
 
-    # --- Siril-Hilfen -------------------------------------------------------
+    # --- Siril helpers -------------------------------------------------------
     def log(self, msg, color=s.LogColor.DEFAULT):
         print(msg)
         try:
@@ -660,7 +872,7 @@ class Combiner:
             pass
 
     def subsky(self, workdir, name, data):
-        """Gradientenentfernung (Polynom Grad 1) ueber Siril."""
+        """Background extraction (polynomial degree 1) using Siril."""
         path = os.path.join(workdir, name + ".fit")
         write_fits(path, data)
         self.siril.cmd("cd", q(workdir))
@@ -670,7 +882,7 @@ class Combiner:
         return read_fits(path)[0]
 
     def register_to_ref(self, workdir, idx, path, ref_rgb, keep=False):
-        """Registriert einen Stack auf ref.fit, mit Rueckfall-Strategien (Punkt 7)."""
+        """Registers one stack onto ref.fit, with fallback strategies."""
         pdir = os.path.join(workdir, f"pair{idx:02d}")
         os.makedirs(pdir, exist_ok=True)
         link_or_copy(os.path.join(workdir, "ref.fit"), os.path.join(pdir, "a_ref.fit"))
@@ -693,17 +905,15 @@ class Combiner:
                 self.siril.cmd("register", SEQ, *args, "-interp=lanczos4",
                                "-maxstars=2000", "-nostarlist")
             except Exception as e:
-                self.log(f"  Registrierung {' '.join(args)} fehlgeschlagen: {e}",
+                self.log(tr("reg_try_failed", args=" ".join(args), err=e),
                          s.LogColor.SALMON)
                 continue
             if os.path.isfile(r1) and os.path.isfile(r2):
                 if n > 0:
-                    self.log(f"  Registrierung gelungen mit {' '.join(args)}",
-                             s.LogColor.SALMON)
+                    self.log(tr("reg_ok_with", args=" ".join(args)), s.LogColor.SALMON)
                 break
         else:
-            raise RuntimeError(f"Registrierung fehlgeschlagen fuer {os.path.basename(path)} "
-                               "(zu wenige gemeinsame Sterne?)")
+            raise RuntimeError(tr("reg_failed", name=os.path.basename(path)))
         reg1, _ = read_fits(r1)
         reg2, _ = read_fits(r2)
         if reg1.shape == ref_rgb.shape == reg2.shape:
@@ -716,10 +926,10 @@ class Combiner:
             shutil.rmtree(pdir, ignore_errors=True)
         return reg2
 
-    # --- Vorbereitung -------------------------------------------------------
+    # --- Preparation -----------------------------------------------------------
     def prepare(self, ircut_files, lp_files, out_dir, prm):
         if not ircut_files or not lp_files:
-            raise ValueError("Mindestens ein IRCUT- und ein LP-Stack noetig.")
+            raise ValueError(tr("need_both"))
         P = Prepared()
         P.inputs = (list(ircut_files), list(lp_files))
         P.prep_key = prm.prep_key()
@@ -727,27 +937,28 @@ class Combiner:
         shutil.rmtree(workdir, ignore_errors=True)
         os.makedirs(workdir)
         try:
-            # --- 1. Referenz ----------------------------------------------------
+            # --- 1. Reference ---------------------------------------------------
             ircut_files = sorted(ircut_files, key=lambda p: -frame_count(p))
             for kind, files in (("IRCUT", ircut_files), ("LP", lp_files)):
                 for p in files:
                     n = frame_count(p)
-                    self.log(f"{kind}: {os.path.basename(p)}"
-                             + (f"  ({n} Frames)" if n else ""))
-            self.progress("Lade Referenz ...", 0.02)
+                    name = os.path.basename(p)
+                    self.log(tr("frames", kind=kind, name=name, n=n) if n
+                             else f"{kind}: {name}")
+            self.progress(tr("loading_ref"), 0.02)
             ref, hdr = read_fits(ircut_files[0])
             ref = to_rgb(ref)
             write_fits(os.path.join(workdir, "ref.fit"), ref, hdr)
             P.hdr = hdr
 
-            # --- 2./3. Registrieren + Gruppen mitteln ---------------------------
+            # --- 2./3. Register + average groups ---------------------------------
             g_ircut, g_lp = GroupStack(), GroupStack()
             g_ircut.add(ref)
             jobs = [("ircut", p) for p in ircut_files[1:]] + [("lp", p) for p in lp_files]
             for i, (kind, p) in enumerate(jobs):
-                self.progress(f"Registriere {os.path.basename(p)} ...",
-                              0.05 + 0.45 * i / len(jobs))
-                self.log(f"Registriere {os.path.basename(p)} ...", s.LogColor.BLUE)
+                msg = tr("registering", name=os.path.basename(p))
+                self.progress(msg, 0.05 + 0.45 * i / len(jobs))
+                self.log(msg, s.LogColor.BLUE)
                 reg = self.register_to_ref(workdir, i + 1, p, ref, prm.keep)
                 (g_ircut if kind == "ircut" else g_lp).add(reg)
                 del reg
@@ -756,13 +967,13 @@ class Combiner:
             lp, cov_lp = g_lp.result()
             del g_ircut, g_lp
             if len(ircut_files) > 1:
-                self.log(f"{len(ircut_files)} IRCUT-Stacks rauschgewichtet gemittelt")
+                self.log(tr("n_averaged", n=len(ircut_files), kind="IRCUT"))
             if len(lp_files) > 1:
-                self.log(f"{len(lp_files)} LP-Stacks rauschgewichtet gemittelt")
+                self.log(tr("n_averaged", n=len(lp_files), kind="LP"))
             valid = cov_rgb & cov_lp & np.all(rgb > 0, axis=0) & np.all(lp > 0, axis=0)
-            self.log(f"Ueberlappung IRCUT/LP: {100.0 * valid.mean():.1f} %")
+            self.log(tr("overlap", p=100.0 * valid.mean()))
 
-            # --- 4. Zuschneiden ---------------------------------------------------
+            # --- 4. Crop -----------------------------------------------------------
             if prm.crop:
                 y0, y1, x0, x1 = common_crop(valid)
                 rgb = np.ascontiguousarray(rgb[:, y0:y1, x0:x1])
@@ -771,17 +982,16 @@ class Combiner:
                 for key, off in (("CRPIX1", x0), ("CRPIX2", y0)):
                     if key in P.hdr:
                         P.hdr[key] = float(P.hdr[key]) - off
-                self.log(f"Zugeschnitten auf {x1 - x0}x{y1 - y0} px "
-                         f"(x {x0}..{x1}, y {y0}..{y1})")
+                self.log(tr("cropped", w=x1 - x0, h=y1 - y0, x0=x0, x1=x1, y0=y0, y1=y1))
 
             ha = np.ascontiguousarray(lp[0])
             oiii = 0.5 * (lp[1] + lp[2])
             del lp
 
-            # --- Gradientenentfernung ------------------------------------------
+            # --- Background extraction ----------------------------------------------
             if prm.bge:
-                self.progress("Gradientenentfernung ...", 0.55)
-                self.log("Gradientenentfernung (subsky Grad 1) ...")
+                self.progress(tr("bge_prog"), 0.55)
+                self.log(tr("bge_log"))
                 for c in range(3):
                     rgb[c][~valid] = np.median(rgb[c][valid])
                 rgb = self.subsky(workdir, "bge_rgb", rgb)
@@ -793,63 +1003,59 @@ class Combiner:
                 ha[~valid] = 0.0
                 oiii[~valid] = 0.0
 
-            # --- 5./6. Analyse ------------------------------------------------
-            self.progress("Analysiere Sterne ...", 0.65)
+            # --- 5./6. Analysis ---------------------------------------------------
+            self.progress(tr("analyze_stars"), 0.65)
             r = rgb[0]
             gb = 0.5 * (rgb[1] + rgb[2])
             fw = measure_fwhm({"R": r, "Ha": ha, "GB": gb, "OIII": oiii}, r, valid)
             P.fwhm = fw
             if fw:
-                self.log(f"FWHM ({fw['n']} Sterne): R {fw['R']:.2f}  Ha {fw['Ha']:.2f}  "
-                         f"G/B {fw['GB']:.2f}  OIII {fw['OIII']:.2f} px")
+                self.log(tr("fwhm", n=fw["n"], r=fw["R"], ha=fw["Ha"], gb=fw["GB"],
+                            o=fw["OIII"]))
                 fmax = max(fw["R"], fw["Ha"], fw["GB"], fw["OIII"])
             else:
-                self.log("Zu wenige Sterne fuer FWHM-Messung - kein PSF-Angleich.",
-                         s.LogColor.SALMON)
+                self.log(tr("fwhm_none"), s.LogColor.SALMON)
                 fmax = 4.0
             star, rd = star_mask(r, valid, fmax)
             P.inpaint_r = 3 * rd
-            self.log(f"Sternmaske: {100.0 * (star > 0.5).mean():.1f} % der Bildflaeche")
-
-            def line_diff(nb, bb, f_nb, f_bb, label):
-                if prm.psf_match and fw:
-                    nb_m, bb_m, s_nb, s_bb = psf_match(nb, bb, f_nb, f_bb)
-                    if s_nb or s_bb:
-                        which = label if s_nb else "RGB"
-                        self.log(f"PSF-Angleich {label}: {which} weichgezeichnet "
-                                 f"(sigma {max(s_nb, s_bb):.2f} px)")
-                else:
-                    nb_m, bb_m = nb, bb
-                cs = continuum_scale(nb_m, bb_m, valid, fmax)
-                if cs is None:
-                    a, b = linear_fit(nb, bb, valid)
-                    self.log(f"{label}: zu wenige Sterne fuer Kontinuum-Abgleich - "
-                             "lineare Anpassung", s.LogColor.SALMON)
-                else:
-                    a, b, n = cs
-                    self.log(f"{label}: Kontinuum-Abgleich ({n} Sternpixel) "
-                             f"scale={a:.4f} off={b:+.5f}")
-                diff = (a * nb_m + b) - bb_m
-                del nb_m, bb_m
-                return zero_point(diff), (a, b)
+            self.log(tr("starmask", p=100.0 * (star > 0.5).mean()))
 
             def zero_point(diff):
-                """Nullpunkt = dunkelste 5 % (geglaettet) -> dort keine Emission."""
+                """Zero point = darkest 5 % (smoothed) -> no emission there."""
                 sm = box_mean(diff, 16)
                 diff -= float(np.percentile(sm[valid & (star < 0.5)][::5], 5))
                 diff[~valid] = 0.0
                 return diff.astype(np.float32)
 
-            self.progress("Bestimme Ha-Linienemission ...", 0.75)
+            def line_diff(nb, bb, f_nb, f_bb, label):
+                if prm.psf_match and fw:
+                    nb_m, bb_m, s_nb, s_bb = psf_match(nb, bb, f_nb, f_bb)
+                    if s_nb or s_bb:
+                        self.log(tr("psf", label=label, which=label if s_nb else "RGB",
+                                    s=max(s_nb, s_bb)))
+                else:
+                    nb_m, bb_m = nb, bb
+                cs = continuum_scale(nb_m, bb_m, valid, fmax)
+                if cs is None:
+                    a, b = linear_fit(nb, bb, valid)
+                    self.log(tr("cont_fallback", label=label), s.LogColor.SALMON)
+                else:
+                    a, b, n = cs
+                    self.log(tr("cont", label=label, n=n, a=a, b=b))
+                diff = (a * nb_m + b) - bb_m
+                del nb_m, bb_m
+                return zero_point(diff), (a, b)
+
+            self.progress(tr("line_ha"), 0.75)
             diff_ha, P.coef["ha_cont"] = line_diff(
                 ha, r, fw and fw["Ha"], fw and fw["R"], "Ha")
-            self.progress("Bestimme OIII-Linienemission ...", 0.85)
+            self.progress(tr("line_o"), 0.85)
             diff_o, P.coef["o_cont"] = line_diff(
                 oiii, gb, fw and fw["OIII"], fw and fw["GB"], "OIII")
 
-            # Ha-Uebersprechen im OIII: Die Bayer-Gruen/Blau-Filter lassen etwas
-            # Ha (656 nm) durch. Annahme: in den hellsten Ha-Regionen gibt es
-            # Stellen ohne OIII -> kleinstes OIII/Ha-Verhaeltnis = Uebersprechen.
+            # Ha crosstalk in OIII: the Bayer green/blue filters pass some Ha
+            # (656 nm). Assumption: the brightest Ha regions contain places
+            # without OIII -> smallest OIII/Ha ratio = crosstalk.
             fb = 8
             sh = bin_image(diff_ha, fb)
             so = bin_image(diff_o, fb)
@@ -862,37 +1068,35 @@ class Combiner:
                 diff_o -= kappa * diff_ha
                 diff_o = zero_point(diff_o)
             P.coef["o_leak"] = kappa
-            self.log(f"Ha-Uebersprechen im OIII korrigiert: kappa={kappa:.3f}")
+            self.log(tr("leak", k=kappa))
             del sh, so, vb, strong
 
-            # lineare Anpassungen (blend, Ausgabedateien, Luminanz)
+            # linear fits (blend, output files, luminance)
             P.coef["ha_r"] = linear_fit(ha, r, valid)
             P.coef["o_g"] = linear_fit(oiii, rgb[1], valid)
             P.coef["o_b"] = linear_fit(oiii, rgb[2], valid)
             P.coef["o_gb"] = linear_fit(oiii, gb, valid)
             P.coef["ha_l"] = linear_fit(ha, rgb.mean(axis=0), valid)
             del gb
-            # Hintergrund-Sockel je Kanal (fuer den Luminanz-Boost)
+            # background pedestal per channel (for the luminance boost)
             vb4 = bin_image(valid, 4, "min")
             P.coef["ped"] = [float(np.percentile(bin_image(rgb[c], 4)[vb4], 1))
                              for c in range(3)]
             P.coef["l_floor"] = 3.0 * noise_sigma(rgb.mean(axis=0), valid)
 
-            # rauschoptimale Mischgewichte fuer 'blend' (Punkt 9)
+            # noise-optimal blend weights
             s_r = noise_sigma(r, valid)
             s_h = P.coef["ha_r"][0] * noise_sigma(ha, valid)
             s_g = noise_sigma(rgb[1], valid)
             s_o = P.coef["o_g"][0] * noise_sigma(oiii, valid)
             P.auto_k = {"ha": s_r ** 2 / max(s_r ** 2 + s_h ** 2, 1e-30),
                         "oiii": s_g ** 2 / max(s_g ** 2 + s_o ** 2, 1e-30)}
-            self.log(f"Rauschen: R {s_r:.2e}  Ha(an R) {s_h:.2e}  G {s_g:.2e}  "
-                     f"OIII(an G) {s_o:.2e}")
-            self.log(f"Auto-k fuer 'blend': Ha {P.auto_k['ha']:.2f}  "
-                     f"OIII {P.auto_k['oiii']:.2f}")
+            self.log(tr("noise", r=s_r, h=s_h, g=s_g, o=s_o))
+            self.log(tr("autok", h=P.auto_k["ha"], o=P.auto_k["oiii"]))
 
             P.arrays = dict(rgb=rgb, ha=ha, oiii=oiii, valid=valid, star=star,
                             diff_ha=diff_ha, diff_o=diff_o)
-            self.progress("Vorbereitung abgeschlossen", 1.0)
+            self.progress(tr("prep_done"), 1.0)
             return P
         finally:
             try:
@@ -902,40 +1106,38 @@ class Combiner:
             if not prm.keep:
                 shutil.rmtree(workdir, ignore_errors=True)
 
-    # --- Export ---------------------------------------------------------------
+    # --- Export ------------------------------------------------------------------
     def save(self, P, prm, out_path):
         out_path = os.path.abspath(out_path)
         if not out_path.lower().endswith(FITS_EXT):
             out_path += ".fit"
         base = os.path.splitext(out_path)[0]
-        self.progress("Berechne Ergebnis ...", 0.3)
+        self.progress(tr("computing"), 0.3)
         result, e_ha = render(P, P.arrays, prm, 1, want_excess=True)
         A = P.arrays
-        k_txt = (f"mode={prm.mode} k_ha={prm.k_ha} k_oiii={prm.k_oiii} k_lum={prm.k_lum} "
-                 f"noise={prm.noise_t} smooth={prm.smooth}")
         hist = [f"Seestar HaRGB-Combine v{VERSION}",
-                k_txt,
+                f"mode={prm.mode} k_ha={prm.k_ha} k_oiii={prm.k_oiii} k_lum={prm.k_lum} "
+                f"noise={prm.noise_t} smooth={prm.smooth}",
                 f"starprot={prm.star_protect} psf={prm.psf_match} bge={prm.bge} "
                 f"crop={prm.crop}",
                 "IRCUT: " + ", ".join(os.path.basename(p) for p in P.inputs[0])[:60],
                 "LP: " + ", ".join(os.path.basename(p) for p in P.inputs[1])[:60]]
-        self.progress("Speichere ...", 0.7)
+        self.progress(tr("saving"), 0.7)
         write_fits(out_path, result, P.hdr, hist)
         a, b = P.coef["ha_r"]
         write_fits(base + "_Ha.fit", np.where(A["valid"], a * A["ha"] + b, 0.0),
-                   P.hdr, ["Ha aus LP-Stack, linear an R angepasst"])
+                   P.hdr, ["Ha from LP stack, linearly fitted to R"])
         a, b = P.coef["o_gb"]
         write_fits(base + "_OIII.fit", np.where(A["valid"], a * A["oiii"] + b, 0.0),
-                   P.hdr, ["OIII aus LP-Stack, linear an (G+B)/2 angepasst"])
+                   P.hdr, ["OIII from LP stack, linearly fitted to (G+B)/2"])
         write_fits(base + "_HaExcess.fit", e_ha, P.hdr,
-                   ["Ha-Linienemission ueber Kontinuum (k=1)"])
+                   ["Ha line emission above continuum (k=1)"])
         for p in (out_path, base + "_Ha.fit", base + "_OIII.fit", base + "_HaExcess.fit"):
-            self.log(f"Gespeichert: {p}", s.LogColor.GREEN)
+            self.log(tr("saved", p=p), s.LogColor.GREEN)
         self.siril.cmd("cd", q(os.path.dirname(out_path)))
         self.siril.cmd("load", q(out_path))
-        self.progress("Fertig", 1.0)
-        self.log("Fertig. Das Ergebnis ist linear - jetzt z.B. SPCC und Stretch.",
-                 s.LogColor.GREEN)
+        self.progress(tr("done"), 1.0)
+        self.log(tr("done"), s.LogColor.GREEN)
         try:
             self.siril.reset_progress()
         except Exception:
@@ -944,9 +1146,11 @@ class Combiner:
 
 
 # ===========================================================================
-# GUI (Punkt 5)
+# GUI
 # ===========================================================================
-def run_gui(combiner, initial_dir):
+def run_gui(combiner, initial_dir, state):
+    """Shows the dialog. Returns True if it should be rebuilt (language change)."""
+    global LANG
     import tkinter as tk
     from tkinter import ttk, filedialog, messagebox
 
@@ -958,24 +1162,26 @@ def run_gui(combiner, initial_dir):
     except Exception:
         pass
 
-    st = {"P": None, "busy": False, "crop_c": None, "img_ov": None, "img_cr": None,
-          "f": 1, "pending": None}
-    ftypes = [("FITS", "*.fit *.fits *.fts"), ("Alle Dateien", "*.*")]
+    st = {"P": state.get("P"), "busy": False, "crop_c": state.get("crop_c"),
+          "img_ov": None, "img_cr": None, "f": 1, "pending": None, "restart": False}
+    ftypes = [("FITS", "*.fit *.fits *.fts"), (tr("all_files"), "*.*")]
 
-    V = dict(mode=tk.StringVar(value=DEFAULTS["mode"]),
-             k_ha=tk.DoubleVar(value=DEFAULTS["k_ha"]),
-             k_oiii=tk.DoubleVar(value=DEFAULTS["k_oiii"]),
-             k_lum=tk.DoubleVar(value=DEFAULTS["k_lum"]),
-             noise_t=tk.DoubleVar(value=DEFAULTS["noise_t"]),
-             smooth=tk.IntVar(value=DEFAULTS["smooth"]),
-             star_protect=tk.BooleanVar(value=DEFAULTS["star_protect"]),
-             psf_match=tk.BooleanVar(value=DEFAULTS["psf_match"]),
-             bge=tk.BooleanVar(value=DEFAULTS["bge"]),
-             crop=tk.BooleanVar(value=DEFAULTS["crop"]),
-             keep=tk.BooleanVar(value=DEFAULTS["keep"]))
-    v_out = tk.StringVar()
+    p0 = state.get("params") or Params()
+    V = dict(mode=tk.StringVar(value=p0.mode),
+             k_ha=tk.DoubleVar(value=p0.k_ha),
+             k_oiii=tk.DoubleVar(value=p0.k_oiii),
+             k_lum=tk.DoubleVar(value=p0.k_lum),
+             noise_t=tk.DoubleVar(value=p0.noise_t),
+             smooth=tk.IntVar(value=p0.smooth),
+             star_protect=tk.BooleanVar(value=p0.star_protect),
+             psf_match=tk.BooleanVar(value=p0.psf_match),
+             bge=tk.BooleanVar(value=p0.bge),
+             crop=tk.BooleanVar(value=p0.crop),
+             keep=tk.BooleanVar(value=p0.keep))
+    v_out = tk.StringVar(value=state.get("out", ""))
     v_before = tk.BooleanVar(value=False)
-    v_status = tk.StringVar(value="Stacks waehlen oder Ordner scannen.")
+    v_status = tk.StringVar(value=tr("st_prepared") if st["P"] else tr("st_start"))
+    v_lang = tk.StringVar(value=LANGS[LANG])
 
     def params():
         return Params(**{k: (round(v.get(), 3) if isinstance(v, tk.DoubleVar) else v.get())
@@ -995,6 +1201,8 @@ def run_gui(combiner, initial_dir):
         fr.grid(row=row, column=1, columnspan=2, sticky="we")
         lb = tk.Listbox(fr, height=3, width=55, selectmode="extended", exportselection=False)
         lb.pack(side="left", fill="x")
+        for p in state.get(key, []):
+            lb.insert("end", p)
         bf = ttk.Frame(fr)
         bf.pack(side="left", padx=3)
 
@@ -1014,12 +1222,12 @@ def run_gui(combiner, initial_dir):
         ttk.Button(bf, text="-", width=3, command=rem).pack()
         lists[key] = lb
 
-    file_list(0, "IRCUT-Stacks:", "ircut")
-    file_list(1, "LP-Stacks:", "lp")
+    file_list(0, tr("ircut_stacks"), "ircut")
+    file_list(1, tr("lp_stacks"), "lp")
 
     def scan():
-        d = filedialog.askdirectory(title="Ordner mit Seestar-Stacks",
-                                    initialdir=initial_dir, parent=root)
+        d = filedialog.askdirectory(title=tr("scan_title"), initialdir=initial_dir,
+                                    parent=root)
         if not d:
             return
         ir, lp, unk = detect_stacks(d)
@@ -1027,42 +1235,44 @@ def run_gui(combiner, initial_dir):
             lists[key].delete(0, "end")
             for p in ps:
                 lists[key].insert("end", p.replace("\\", "/"))
-        msg = f"{len(ir)} IRCUT- und {len(lp)} LP-Stacks gefunden."
+        msg = tr("scan_found", i=len(ir), l=len(lp))
         if unk:
-            msg += f" {len(unk)} Datei(en) nicht zuordenbar."
-        v_status.set(msg + " Ggf. unpassende Eintraege entfernen (z.B. Einzel- und "
-                     "Gesamt-Stacks nicht mischen).")
+            msg += tr("scan_unknown", n=len(unk))
         v_out.set(os.path.join(d, DEFAULT_OUT).replace("\\", "/"))
         inputs_changed()
+        v_status.set(msg + tr("scan_hint"))
 
-    ttk.Button(left, text="Ordner scannen ...", command=scan).grid(
-        row=2, column=1, sticky="w", pady=(2, 6))
+    top = ttk.Frame(left)
+    top.grid(row=2, column=1, columnspan=2, sticky="we", pady=(2, 6))
+    ttk.Button(top, text=tr("scan"), command=scan).pack(side="left")
+    lang_box = ttk.Combobox(top, textvariable=v_lang, state="readonly", width=9,
+                            values=list(LANGS.values()))
+    lang_box.pack(side="right")
+    ttk.Label(top, text=tr("language")).pack(side="right", padx=4)
 
-    ttk.Label(left, text="Ausgabe:").grid(row=3, column=0, sticky="w")
+    ttk.Label(left, text=tr("output")).grid(row=3, column=0, sticky="w")
     of = ttk.Frame(left)
     of.grid(row=3, column=1, columnspan=2, sticky="we")
     ttk.Entry(of, textvariable=v_out, width=55).pack(side="left")
 
     def pick_out():
-        p = filedialog.asksaveasfilename(title="Ausgabedatei", parent=root,
+        p = filedialog.asksaveasfilename(title=tr("out_title"), parent=root,
                                          initialdir=initial_dir, defaultextension=".fit",
                                          filetypes=ftypes, initialfile=DEFAULT_OUT)
         if p:
             v_out.set(p)
     ttk.Button(of, text="...", width=3, command=pick_out).pack(side="left", padx=3)
 
-    lf1 = ttk.LabelFrame(left, text="Vorbereitung (Aenderung = neu berechnen)", padding=6)
+    lf1 = ttk.LabelFrame(left, text=tr("grp_prep"), padding=6)
     lf1.grid(row=4, column=0, columnspan=3, sticky="we", pady=(10, 4))
-    for i, (key, txt) in enumerate((
-            ("psf_match", "Sternschaerfe angleichen (PSF)"),
-            ("bge", "Gradientenentfernung (subsky Grad 1)"),
-            ("crop", "Auf gemeinsamen Bildbereich zuschneiden"))):
-        ttk.Checkbutton(lf1, text=txt, variable=V[key],
+    for i, (key, txt) in enumerate((("psf_match", "opt_psf"), ("bge", "opt_bge"),
+                                     ("crop", "opt_crop"))):
+        ttk.Checkbutton(lf1, text=tr(txt), variable=V[key],
                         command=lambda: inputs_changed(False)).grid(row=i, column=0, sticky="w")
 
-    lf2 = ttk.LabelFrame(left, text="Kombination (Vorschau live)", padding=6)
+    lf2 = ttk.LabelFrame(left, text=tr("grp_comb"), padding=6)
     lf2.grid(row=5, column=0, columnspan=3, sticky="we", pady=4)
-    ttk.Label(lf2, text="Modus:").grid(row=0, column=0, sticky="w")
+    ttk.Label(lf2, text=tr("mode")).grid(row=0, column=0, sticky="w")
     mode_box = ttk.Combobox(lf2, textvariable=V["mode"], state="readonly", width=10,
                             values=["excess", "blend"])
     mode_box.grid(row=0, column=1, sticky="w")
@@ -1088,49 +1298,45 @@ def run_gui(combiner, initial_dir):
         sc.bind("<ButtonRelease-1>", lambda e: schedule_preview())
         sliders[key] = sc
 
-    slider(2, "k_ha", "Ha-Staerke", 0.0, 2.0)
-    slider(3, "k_oiii", "OIII-Staerke", 0.0, 2.0)
-    slider(4, "k_lum", "Ha-Luminanz", 0.0, 1.0)
-    slider(5, "noise_t", "Rauschschwelle (sigma)", 0.0, 5.0, "{:.1f}")
-    slider(6, "smooth", "Glaettung (px)", 0, 8, "{:d}")
-    ttk.Checkbutton(lf2, text="Sterne schuetzen", variable=V["star_protect"],
+    kmax = 2.0 if p0.mode == "excess" else 1.0
+    slider(2, "k_ha", tr("sl_kha"), 0.0, kmax)
+    slider(3, "k_oiii", tr("sl_ko"), 0.0, kmax)
+    slider(4, "k_lum", tr("sl_kl"), 0.0, 1.0)
+    slider(5, "noise_t", tr("sl_noise"), 0.0, 5.0, "{:.1f}")
+    slider(6, "smooth", tr("sl_smooth"), 0, 8, "{:d}")
+    ttk.Checkbutton(lf2, text=tr("star_prot"), variable=V["star_protect"],
                     command=lambda: schedule_preview()).grid(row=7, column=0, sticky="w")
 
     def auto_k():
         P = st["P"]
         if P is None:
-            messagebox.showinfo("Auto-k", "Erst 'Vorschau' ausfuehren.", parent=root)
+            messagebox.showinfo("Auto-k", tr("autok_first"), parent=root)
             return
         V["k_ha"].set(round(P.auto_k["ha"], 2))
         if V["k_oiii"].get() > 0:
             V["k_oiii"].set(round(P.auto_k["oiii"], 2))
         schedule_preview()
-    btn_auto = ttk.Button(lf2, text="Auto-k (blend)", command=auto_k)
-    btn_auto.grid(row=7, column=1, sticky="e")
-
-    mode_help = {"excess": "Linienemission ueber dem Kontinuum addieren (empfohlen)",
-                 "blend": "Schmalband einmischen (k 0..1, Auto-k = rauschoptimal)"}
+    ttk.Button(lf2, text=tr("autok_btn"), command=auto_k).grid(row=7, column=1, sticky="e")
 
     def on_mode(*_):
         m = V["mode"].get()
-        lbl_mode.config(text=mode_help[m])
+        lbl_mode.config(text=tr("mode_" + m))
         for key in ("k_ha", "k_oiii"):
             sliders[key].config(to=2.0 if m == "excess" else 1.0)
             if m == "blend" and V[key].get() > 1.0:
                 V[key].set(1.0)
         schedule_preview()
     mode_box.bind("<<ComboboxSelected>>", on_mode)
-    lbl_mode.config(text=mode_help[V["mode"].get()])
+    lbl_mode.config(text=tr("mode_" + V["mode"].get()))
 
-    ttk.Checkbutton(left, text="Arbeitsordner behalten (Debug)", variable=V["keep"]).grid(
+    ttk.Checkbutton(left, text=tr("keep"), variable=V["keep"]).grid(
         row=6, column=1, sticky="w")
 
     bfr = ttk.Frame(left)
     bfr.grid(row=7, column=0, columnspan=3, sticky="e", pady=(8, 0))
-    btn_prev = ttk.Button(bfr, text="Vorschau", command=lambda: do_preview())
-    btn_save = ttk.Button(bfr, text="Speichern", command=lambda: do_save())
-    btn_close = ttk.Button(bfr, text="Schliessen", command=root.destroy)
-    btn_close.pack(side="right", padx=3)
+    btn_prev = ttk.Button(bfr, text=tr("preview"), command=lambda: do_preview())
+    btn_save = ttk.Button(bfr, text=tr("save"), command=lambda: do_save())
+    ttk.Button(bfr, text=tr("close"), command=root.destroy).pack(side="right", padx=3)
     btn_save.pack(side="right", padx=3)
     btn_prev.pack(side="right", padx=3)
     ttk.Label(left, textvariable=v_status, wraplength=480, foreground="#2060a0").grid(
@@ -1144,24 +1350,24 @@ def run_gui(combiner, initial_dir):
     cv_cr.grid(row=0, column=1, sticky="n", padx=(8, 0))
     rf = ttk.Frame(right)
     rf.grid(row=1, column=1, sticky="nw", padx=(8, 0), pady=4)
-    ttk.Checkbutton(rf, text="Vorher (nur IRCUT)", variable=v_before,
+    ttk.Checkbutton(rf, text=tr("before"), variable=v_before,
                     command=lambda: schedule_preview(0)).pack(anchor="w")
-    ttk.Label(rf, text="Klick in die Uebersicht waehlt\nden 1:1-Ausschnitt.",
-              foreground="gray").pack(anchor="w", pady=4)
+    ttk.Label(rf, text=tr("click_hint"), foreground="gray").pack(anchor="w", pady=4)
 
-    # ---------------- Logik ----------------
+    # ---------------- Logic ----------------
     def inputs_changed(reset_inputs=True):
-        st["P"] = None if reset_inputs or st["P"] is None else st["P"]
-        if st["P"] is not None and st["P"].prep_key != params().prep_key():
+        if reset_inputs:
+            st["P"] = None
+        elif st["P"] is not None and st["P"].prep_key != params().prep_key():
             st["P"] = None
         if st["P"] is None:
-            v_status.set(v_status.get().split(" | ")[0] + " | Vorbereitung noetig "
-                         "(Vorschau oder Speichern).")
+            v_status.set(tr("st_needprep"))
 
     def set_busy(b):
         st["busy"] = b
         for w in (btn_prev, btn_save):
             w.config(state="disabled" if b else "normal")
+        lang_box.config(state="disabled" if b else "readonly")
 
     def run_bg(fn, done):
         set_busy(True)
@@ -1184,8 +1390,8 @@ def run_gui(combiner, initial_dir):
             set_busy(False)
             if "e" in res:
                 combiner.log(res["tb"], s.LogColor.RED)
-                v_status.set(f"Fehler: {res['e']}")
-                messagebox.showerror("Fehler", str(res["e"]), parent=root)
+                v_status.set(tr("error", e=res["e"]))
+                messagebox.showerror(tr("err_title"), str(res["e"]), parent=root)
             else:
                 done(res.get("v"))
         poll()
@@ -1204,8 +1410,7 @@ def run_gui(combiner, initial_dir):
     def ensure_prepared(then):
         ir, lp = files()
         if not ir or not lp:
-            messagebox.showerror("Fehler", "Mindestens einen IRCUT- und einen LP-Stack "
-                                 "angeben.", parent=root)
+            messagebox.showerror(tr("err_title"), tr("need_both"), parent=root)
             return
         P = st["P"]
         if P is not None and P.inputs == (ir, lp) and P.prep_key == params().prep_key():
@@ -1214,11 +1419,11 @@ def run_gui(combiner, initial_dir):
         prm = params()
         od = os.path.dirname(os.path.abspath(out_path()))
         os.makedirs(od, exist_ok=True)
-        v_status.set("Vorbereitung laeuft (Registrierung, Analyse) ...")
+        v_status.set(tr("st_preparing"))
 
         def done(P):
             st["P"] = P
-            v_status.set("Vorbereitet. Regler aendern -> Vorschau aktualisiert sich.")
+            v_status.set(tr("st_prepared"))
             then()
         run_bg(lambda: combiner.prepare(ir, lp, od, prm), done)
 
@@ -1249,15 +1454,12 @@ def run_gui(combiner, initial_dir):
         st["f"] = f
         B = P.binned(f)
         sp = B["_stretch"]
-        if v_before.get():
-            ov = B["rgb"]
-        else:
-            ov, _ = render(P, B, prm, f)
+        ov = B["rgb"] if v_before.get() else render(P, B, prm, f)[0]
         st["img_ov"] = to_photo(apply_stretch(ov, sp))
         cv_ov.delete("all")
         cv_ov.create_image(0, 0, anchor="nw", image=st["img_ov"])
         hb = B["rgb"].shape[1]
-        # 1:1-Ausschnitt
+        # 1:1 crop
         if st["crop_c"] is None:
             st["crop_c"] = (H // 2, W // 2)
         cy, cx = st["crop_c"]
@@ -1273,7 +1475,7 @@ def run_gui(combiner, initial_dir):
         st["img_cr"] = to_photo(apply_stretch(cr, sp))
         cv_cr.delete("all")
         cv_cr.create_image(0, 0, anchor="nw", image=st["img_cr"])
-        # Rahmen in der Uebersicht (Anzeige ist vertikal gespiegelt)
+        # frame in the overview (display is flipped vertically)
         rx0, rx1 = (cx - half) / f, (cx + half) / f
         ry0, ry1 = hb - (cy + half) / f, hb - (cy - half) / f
         cv_ov.create_rectangle(rx0, ry0, rx1, ry1, outline="#40ff40")
@@ -1293,42 +1495,62 @@ def run_gui(combiner, initial_dir):
 
         def go():
             prm = params()
-            v_status.set("Speichere ...")
+            v_status.set(tr("saving"))
             run_bg(lambda: combiner.save(st["P"], prm, o),
-                   lambda p: v_status.set(f"Gespeichert: {p} (in Siril geladen)"))
+                   lambda p: v_status.set(tr("st_saved", p=p)))
         ensure_prepared(go)
 
+    def on_lang(*_):
+        global LANG
+        new = next(k for k, v in LANGS.items() if v == v_lang.get())
+        if new == LANG or st["busy"]:
+            return
+        LANG = new
+        save_settings(lang=new)
+        ir, lp = files()
+        state.update(P=st["P"], ircut=ir, lp=lp, out=v_out.get(), params=params(),
+                     crop_c=st["crop_c"])
+        st["restart"] = True
+        root.destroy()
+    lang_box.bind("<<ComboboxSelected>>", on_lang)
+
+    if st["P"] is not None:
+        root.after(100, lambda: schedule_preview(0))
     root.mainloop()
+    return st["restart"]
 
 
 # ===========================================================================
 # main
 # ===========================================================================
 def main():
+    global LANG
     ap = argparse.ArgumentParser(description="Seestar HaRGB-Combine")
-    ap.add_argument("-ircut", nargs="+", help="IRCUT-Stack(s)")
-    ap.add_argument("-lp", nargs="+", help="LP-Stack(s)")
-    ap.add_argument("-dir", help="Ordner scannen (IRCUT/LP am Dateinamen erkennen)")
-    ap.add_argument("-out", help=f"Ausgabedatei (Standard: {DEFAULT_OUT})")
+    ap.add_argument("-ircut", nargs="+", help="IRCUT stack(s)")
+    ap.add_argument("-lp", nargs="+", help="LP stack(s)")
+    ap.add_argument("-dir", help="scan folder (detect IRCUT/LP from file names)")
+    ap.add_argument("-out", help=f"output file (default: {DEFAULT_OUT})")
     ap.add_argument("-mode", choices=["excess", "blend"], default=DEFAULTS["mode"])
-    ap.add_argument("-k", default=str(DEFAULTS["k_ha"]), help="Ha-Staerke oder 'auto'")
-    ap.add_argument("-koiii", default=str(DEFAULTS["k_oiii"]), help="OIII-Staerke oder 'auto'")
-    ap.add_argument("-klum", type=float, default=DEFAULTS["k_lum"], help="Ha-Luminanz 0..1")
+    ap.add_argument("-k", default=str(DEFAULTS["k_ha"]), help="Ha strength or 'auto'")
+    ap.add_argument("-koiii", default=str(DEFAULTS["k_oiii"]), help="OIII strength or 'auto'")
+    ap.add_argument("-klum", type=float, default=DEFAULTS["k_lum"], help="Ha luminance 0..1")
     ap.add_argument("-noise", type=float, default=DEFAULTS["noise_t"],
-                    help="Rauschschwelle in sigma (0 = aus)")
-    ap.add_argument("-smooth", type=int, default=DEFAULTS["smooth"], help="Glaettung (px)")
-    ap.add_argument("-nopsf", action="store_true", help="kein PSF-Angleich")
-    ap.add_argument("-nostarprot", action="store_true", help="kein Sternschutz")
-    ap.add_argument("-bge", action="store_true", help="Gradientenentfernung")
-    ap.add_argument("-crop", action="store_true", help="auf gemeinsamen Bereich zuschneiden")
-    ap.add_argument("-keep", action="store_true", help="Arbeitsordner behalten")
+                    help="noise threshold in sigma (0 = off)")
+    ap.add_argument("-smooth", type=int, default=DEFAULTS["smooth"], help="smoothing (px)")
+    ap.add_argument("-nopsf", action="store_true", help="no PSF matching")
+    ap.add_argument("-nostarprot", action="store_true", help="no star protection")
+    ap.add_argument("-bge", action="store_true", help="background extraction")
+    ap.add_argument("-crop", action="store_true", help="crop to common area")
+    ap.add_argument("-keep", action="store_true", help="keep working folder")
+    ap.add_argument("-lang", choices=list(LANGS), help="language (en, de)")
     args = ap.parse_args()
+    LANG = detect_lang(args.lang)
 
     siril = s.SirilInterface()
     try:
         siril.connect()
     except Exception as e:
-        print(f"Keine Verbindung zu Siril: {e}")
+        print(tr("no_conn", e=e))
         sys.exit(1)
 
     cb = Combiner(siril)
@@ -1356,25 +1578,26 @@ def main():
                 return float(v)
             prm.k_ha = kval(args.k, "ha", DEFAULTS["k_ha"])
             prm.k_oiii = kval(args.koiii, "oiii", 0.5)
-            cb.log(f"Modus {prm.mode}: k_Ha={prm.k_ha} k_OIII={prm.k_oiii} k_Lum={prm.k_lum}")
+            cb.log(tr("mode_line", mode=prm.mode, kh=prm.k_ha, ko=prm.k_oiii, kl=prm.k_lum))
             cb.save(P, prm, out)
         else:
             if args.dir or args.ircut or args.lp:
-                cb.log("Keine passenden IRCUT- und LP-Stacks gefunden.", s.LogColor.RED)
+                cb.log(tr("no_stacks"), s.LogColor.RED)
                 sys.exit(1)
             if siril.is_cli():
-                cb.log("Im CLI-Modus bitte -dir oder -ircut und -lp angeben.",
-                       s.LogColor.RED)
+                cb.log(tr("cli_need"), s.LogColor.RED)
                 sys.exit(1)
             try:
                 wd = siril.get_siril_wd()
             except Exception:
                 wd = os.path.expanduser("~")
-            run_gui(cb, wd)
+            state = {}
+            while run_gui(cb, wd, state):
+                pass
     except SystemExit:
         raise
     except Exception as e:
-        cb.log(f"Fehler: {e}", s.LogColor.RED)
+        cb.log(tr("error", e=e), s.LogColor.RED)
         cb.log(traceback.format_exc(), s.LogColor.RED)
         sys.exit(1)
     finally:
